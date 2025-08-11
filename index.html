@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>シンプル将棋</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="start-screen">
+        <h1>シンプル将棋</h1>
+        <button id="vs-human-btn">二人で対戦</button>
+        <button id="vs-ai-btn">AIと対戦</button>
+    </div>
+
+    <div id="game-container" class="hidden">
+        <div id="info-area">
+            <p>手番: <span id="current-player"></span></p>
+        </div>
+        <div id="main-area">
+            <div id="captured-gote" class="captured-area"></div>
+            <div id="board"></div>
+            <div id="captured-sente" class="captured-area"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
