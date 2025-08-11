@@ -1,4 +1,3 @@
-// --- グローバル変数定義 ---
 const boardElement = document.getElementById('board');
 const playerTurnElement = document.getElementById('current-player');
 const capturedSenteElement = document.getElementById('captured-sente');
@@ -13,7 +12,6 @@ let capturedSente = {};
 let capturedGote = {};
 let isGameOver = false;
 
-// --- 駒の定義 ---
 const PIECES = {
     '歩': { name: '歩', promoted: 'と' }, '香': { name: '香', promoted: '杏' }, '桂': { name: '桂', promoted: '圭' },
     '銀': { name: '銀', promoted: '全' }, '金': { name: '金', promoted: null }, '角': { name: '角', promoted: '馬' },
@@ -22,7 +20,6 @@ const PIECES = {
     '馬': { name: '馬', promoted: null }, '龍': { name: '龍', promoted: null },
 };
 
-// --- 初期化処理 ---
 function initGame() {
     board = [
         [{name:'香', owner:'gote'},{name:'桂', owner:'gote'},{name:'銀', owner:'gote'},{name:'金', owner:'gote'},{name:'王', owner:'gote'},{name:'金', owner:'gote'},{name:'銀', owner:'gote'},{name:'桂', owner:'gote'},{name:'香', owner:'gote'}],
@@ -39,7 +36,6 @@ function initGame() {
     renderAll();
 }
 
-// --- 描画処理 ---
 function renderAll() { renderBoard(); renderCaptured(); updatePlayerTurn(); }
 function renderBoard() {
     boardElement.innerHTML = '';
@@ -48,7 +44,6 @@ function renderBoard() {
         square.classList.add('square'); square.dataset.row = r; square.dataset.col = c;
         const piece = board[r][c];
         if (piece) { square.appendChild(createPieceElement(piece, false)); }
-        // ✅ 選択状態のハイライトをここで一括管理
         if (selectedPiece && selectedPiece.type === 'board' && selectedPiece.row === r && selectedPiece.col === c) {
             square.classList.add('selected');
         }
@@ -64,7 +59,6 @@ function renderCaptured() {
             const pieceData = { name: pieceName, owner: side.owner };
             const pieceElement = createPieceElement(pieceData, true);
             pieceElement.innerText += `x${side.pieces[pieceName]}`;
-            // ✅ 選択状態のハイライトをここで一括管理
             if (selectedPiece && selectedPiece.type === 'captured' && selectedPiece.piece.name === pieceName) {
                 pieceElement.classList.add('selected');
             }
@@ -83,24 +77,19 @@ function createPieceElement(piece, isCaptured) {
 }
 function updatePlayerTurn() { playerTurnElement.innerText = currentPlayer === 'sente' ? '先手' : '後手'; }
 
-// --- イベントハンドラ ---
-// ✅ onSquareClick: 選択キャンセルと選択切り替えのロジックを追加
 function onSquareClick(row, col) {
     if (isGameOver) return;
     const clickedPieceOnBoard = board[row][col];
 
-    if (selectedPiece) { // 何かを選択中の場合
+    if (selectedPiece) {
         const isReselectingSamePiece = selectedPiece.type === 'board' && selectedPiece.row === row && selectedPiece.col === col;
         const isSelectingAnotherFriendlyPiece = clickedPieceOnBoard && clickedPieceOnBoard.owner === currentPlayer;
 
         if (isReselectingSamePiece) {
-            // 選択中の駒を再度クリック => 選択解除
             selectedPiece = null;
         } else if (isSelectingAnotherFriendlyPiece) {
-            // 別の自分の駒をクリック => 選択切り替え
             selectedPiece = { type: 'board', row, col, piece: clickedPieceOnBoard };
         } else {
-            // 移動または駒を打つ処理
             if (selectedPiece.type === 'board') {
                 const from = { ...selectedPiece };
                 if (!isValidFuture(from, {row, col})) {
@@ -113,37 +102,31 @@ function onSquareClick(row, col) {
                 if (isValidDrop(selectedPiece.piece, row, col)) {
                     dropPiece(selectedPiece.piece, row, col);
                 } else {
-                    // 打てない場所なら選択を解除
                     selectedPiece = null;
                 }
             }
         }
-    } else { // 何も選択していない場合
+    } else {
         if (clickedPieceOnBoard && clickedPieceOnBoard.owner === currentPlayer) {
-            // 自分の駒をクリック => 新規選択
             selectedPiece = { type: 'board', row, col, piece: clickedPieceOnBoard };
         }
     }
-    renderAll(); // どんな操作後も盤面を再描画して状態を反映
+    renderAll();
 }
-// ✅ onCapturedPieceClick: 持ち駒の選択・選択解除・切り替えロジックを追加
 function onCapturedPieceClick(pieceName, owner) {
     if (isGameOver || owner !== currentPlayer) return;
 
     const isReselectingSamePiece = selectedPiece && selectedPiece.type === 'captured' && selectedPiece.piece.name === pieceName;
 
     if (isReselectingSamePiece) {
-        // 同じ持ち駒を再度クリック => 選択解除
         selectedPiece = null;
     } else {
-        // 持ち駒をクリック => 新規選択 or 選択切り替え
         selectedPiece = { type: 'captured', piece: { name: pieceName, owner } };
     }
-    renderAll(); // 状態を反映
+    renderAll();
 }
 
 
-// --- ゲーム進行 ---
 function movePiece(from, toRow, toCol) {
     const pieceToMove = from.piece;
     const targetPiece = board[toRow][toCol];
@@ -190,7 +173,6 @@ function switchTurn() {
     }
 }
 
-// --- ルール判定ロジック ---
 function isValidMove(from, toRow, toCol) {
     const piece = from.piece; const fromRow = from.row; const fromCol = from.col;
     const dy = toRow - fromRow; const dx = toCol - fromCol; const dir = piece.owner === 'sente' ? -1 : 1;
@@ -234,12 +216,10 @@ function isValidMove(from, toRow, toCol) {
 function isValidDrop(piece, row, col) {
     if (board[row][col]) { return false; }
     if (piece.name === '歩') {
-        // 打ち歩詰めのチェック（簡易版：王の正面に歩を打って王手になる場合は打てない）
         const dir = piece.owner === 'sente' ? -1 : 1;
         const kingPos = { r: row + dir, c: col };
         const p = board[kingPos.r] && board[kingPos.r][kingPos.c];
         if (p && p.name === '王' && p.owner !== piece.owner) {
-             // ここで詰み判定を呼び出すのが正式だが、複雑なため今回は「王の前に打つ王手」を制限する簡易実装に留める
              // alert("打ち歩詰めは禁止です。"); return false;
         }
         for (let r = 0; r < 9; r++) { const p = board[r][col]; if (p && p.name === '歩' && p.owner === piece.owner) { alert("二歩は禁止です。"); return false; }}
@@ -272,7 +252,7 @@ function isKingInCheck(kingOwner, currentBoard) {
 function isValidFuture(from, to) {
     const tempBoard = JSON.parse(JSON.stringify(board));
     const piece = from.piece;
-    if (tempBoard[to.row][to.col]) { /* 駒を取るロジックは省略 */ }
+    if (tempBoard[to.row][to.col]) {}
     tempBoard[to.row][to.col] = piece;
     tempBoard[from.row][from.col] = null;
     return !isKingInCheck(piece.owner, tempBoard);
