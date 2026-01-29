@@ -20,6 +20,11 @@ const PIECES = {
     '馬': { name: '馬', promoted: null }, '龍': { name: '龍', promoted: null },
 };
 
+const PIECE_VALUES = {
+    '歩': 1, '香': 3, '桂': 3, '銀': 5, '金': 6, '角': 8, '飛': 10, '王': 1000,
+    'と': 6, '杏': 6, '圭': 6, '全': 6, '馬': 12, '龍': 14
+};
+
 function initGame() {
     board = [
         [{name:'香', owner:'gote'},{name:'桂', owner:'gote'},{name:'銀', owner:'gote'},{name:'金', owner:'gote'},{name:'王', owner:'gote'},{name:'金', owner:'gote'},{name:'銀', owner:'gote'},{name:'桂', owner:'gote'},{name:'香', owner:'gote'}],
@@ -127,7 +132,7 @@ function onCapturedPieceClick(pieceName, owner) {
 }
 
 
-function movePiece(from, toRow, toCol) {
+function movePiece(from, toRow, toCol, forcePromotion = null) {
     const pieceToMove = from.piece;
     const targetPiece = board[toRow][toCol];
     if (targetPiece) {
@@ -137,8 +142,19 @@ function movePiece(from, toRow, toCol) {
     }
     const canPromote = (pieceToMove.owner === 'sente' && toRow <= 2) || (pieceToMove.owner === 'gote' && toRow >= 6);
     const mustPromote = ((pieceToMove.name === '歩' || pieceToMove.name === '香') && toRow === (pieceToMove.owner === 'sente' ? 0 : 8)) || (pieceToMove.name === '桂' && (pieceToMove.owner === 'sente' ? toRow <= 1 : toRow >= 7));
+    
     if ((canPromote || mustPromote) && PIECES[pieceToMove.name].promoted) {
-        if(mustPromote || confirm(`${pieceToMove.name}を成りますか？`)) {
+        let promote = false;
+        if (forcePromotion === true) {
+            promote = true;
+        } else if (forcePromotion === false) {
+            promote = false;
+        } else {
+            if (mustPromote || confirm(`${pieceToMove.name}を成りますか？`)) {
+                promote = true;
+            }
+        }
+        if (promote) {
             pieceToMove.name = PIECES[pieceToMove.name].promoted;
         }
     }
@@ -220,13 +236,20 @@ function isValidDrop(piece, row, col) {
         const kingPos = { r: row + dir, c: col };
         const p = board[kingPos.r] && board[kingPos.r][kingPos.c];
         if (p && p.name === '王' && p.owner !== piece.owner) {
-             // alert("打ち歩詰めは禁止です。"); return false;
+             // TODO: Check for mate by dropping pawn (打ち歩詰め)
+             // return false;
         }
-        for (let r = 0; r < 9; r++) { const p = board[r][col]; if (p && p.name === '歩' && p.owner === piece.owner) { alert("二歩は禁止です。"); return false; }}
+        for (let r = 0; r < 9; r++) { 
+            const p = board[r][col]; 
+            if (p && p.name === '歩' && p.owner === piece.owner) { 
+                return false; // Nifu check
+            }
+        }
     }
-    const lastRank = piece.owner === 'sente' ? 0 : 8; const secondLastRank = piece.owner === 'sente' ? 1 : 7;
-    if ((piece.name === '歩' || piece.name === '香') && row === lastRank) { alert("そこには打てません。"); return false; }
-    if (piece.name === '桂' && (row === lastRank || row === secondLastRank)) { alert("そこには打てません。"); return false; }
+    const lastRank = piece.owner === 'sente' ? 0 : 8;
+    const secondLastRank = piece.owner === 'sente' ? 1 : 7;
+    if ((piece.name === '歩' || piece.name === '香') && row === lastRank) { return false; }
+    if (piece.name === '桂' && (row === lastRank || row === secondLastRank)) { return false; }
     return true;
 }
 function isKingInCheck(kingOwner, currentBoard) {
@@ -291,32 +314,144 @@ function isCheckmate(kingOwner) {
     }
     return true;
 }
+
+function getPieceValue(piece) {
+    if (!piece || !piece.name) return 0;
+    return PIECE_VALUES[piece.name] || 0;
+}
+
+function evaluateBoard(board, player, capturedPlayer, capturedOpponent) {
+    let score = 0;
+    for (let r = 0; r < 9; r++) {
+        for (let c = 0; c < 9; c++) {
+            const piece = board[r][c];
+            if (piece) {
+                if (piece.owner === player) {
+                    score += getPieceValue(piece);
+                } else {
+                    score -= getPieceValue(piece);
+                }
+            }
+        }
+    }
+    for (const pieceName in capturedPlayer) {
+        score += getPieceValue({ name: pieceName }) * capturedPlayer[pieceName];
+    }
+    for (const pieceName in capturedOpponent) {
+        score -= getPieceValue({ name: pieceName }) * capturedOpponent[pieceName];
+    }
+    return score;
+}
+
 function makeAiMove() {
-    let legalMoves = [];
+    let bestMoves = [];
+    let bestScore = -Infinity;
+    let legalMovesAvailable = false;
+    const player = 'gote';
+
+    // 1. Evaluate board moves
     for (let r = 0; r < 9; r++) { for (let c = 0; c < 9; c++) {
-        if (board[r][c] && board[r][c].owner === 'gote') {
+        const piece = board[r][c];
+        if (piece && piece.owner === player) {
+            const from = { row: r, col: c, piece: piece };
             for (let tr = 0; tr < 9; tr++) { for (let tc = 0; tc < 9; tc++) {
-                const from = { row: r, col: c, piece: board[r][c] };
-                if (isValidMove(from, tr, tc) && isValidFuture(from, {row: tr, col: tc})) {
-                    legalMoves.push({ type: 'move', from, to: { r: tr, c: tc } });
+                if (isValidMove(from, tr, tc)) {
+                    const tempBoardMove = JSON.parse(JSON.stringify(board));
+                    tempBoardMove[tr][tc] = from.piece;
+                    tempBoardMove[r][c] = null;
+
+                    if (!isKingInCheck(player, tempBoardMove)) {
+                        legalMovesAvailable = true;
+                        
+                        const tempCapturedSente = JSON.parse(JSON.stringify(capturedSente));
+                        const tempCapturedGote = JSON.parse(JSON.stringify(capturedGote));
+
+                        const targetPiece = board[tr][tc];
+                        if (targetPiece) {
+                            const originalName = Object.keys(PIECES).find(key => PIECES[key].promoted === targetPiece.name) || targetPiece.name;
+                            tempCapturedGote[originalName] = (tempCapturedGote[originalName] || 0) + 1;
+                        }
+
+                        const pieceToMove = from.piece;
+                        const canPromote = (player === 'gote' && tr >= 6) || (player === 'sente' && tr <= 2);
+                        const mustPromote = ((pieceToMove.name === '歩' || pieceToMove.name === '香') && tr === (player === 'sente' ? 0 : 8)) || (pieceToMove.name === '桂' && (player === 'sente' ? tr <= 1 : tr >= 7));
+                        
+                        let score, promotedMove = false;
+
+                        if ((canPromote || mustPromote) && PIECES[pieceToMove.name].promoted) {
+                            const promotedPiece = JSON.parse(JSON.stringify(pieceToMove));
+                            promotedPiece.name = PIECES[pieceToMove.name].promoted;
+                            const promotedBoard = JSON.parse(JSON.stringify(tempBoardMove));
+                            promotedBoard[tr][tc] = promotedPiece;
+                            
+                            const promotedScore = evaluateBoard(promotedBoard, player, tempCapturedGote, tempCapturedSente);
+
+                            if (!mustPromote) {
+                                const nonPromotedScore = evaluateBoard(tempBoardMove, player, tempCapturedGote, tempCapturedSente);
+                                if (promotedScore > nonPromotedScore) {
+                                    score = promotedScore;
+                                    promotedMove = true;
+                                } else {
+                                    score = nonPromotedScore;
+                                }
+                            } else {
+                                score = promotedScore;
+                                promotedMove = true;
+                            }
+                        } else {
+                            score = evaluateBoard(tempBoardMove, player, tempCapturedGote, tempCapturedSente);
+                        }
+                        
+                        const move = { type: 'move', from, to: { r: tr, c: tc }, promote: promotedMove };
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestMoves = [move];
+                        } else if (score === bestScore) {
+                            bestMoves.push(move);
+                        }
+                    }
                 }
             }}
         }
     }}
+
+    // 2. Evaluate drops
     const captured = capturedGote;
     for (const pieceName in captured) { if(captured[pieceName] > 0) {
+        const pieceToDrop = { name: pieceName, owner: player };
         for (let r = 0; r < 9; r++) { for (let c = 0; c < 9; c++) {
-            const piece = { name: pieceName, owner: 'gote' };
-            if (isValidDrop(piece, r, c)) {
-                legalMoves.push({ type: 'drop', piece, to: {r, c} });
+            if (isValidDrop(pieceToDrop, r, c)) {
+                const tempBoard = JSON.parse(JSON.stringify(board));
+                tempBoard[r][c] = pieceToDrop;
+                if (!isKingInCheck(player, tempBoard)) {
+                    legalMovesAvailable = true;
+                    
+                    const tempCapturedGote = JSON.parse(JSON.stringify(capturedGote));
+                    tempCapturedGote[pieceName]--;
+                    
+                    const score = evaluateBoard(tempBoard, player, tempCapturedGote, capturedSente);
+                    const move = { type: 'drop', piece: pieceToDrop, to: { r, c } };
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestMoves = [move];
+                    } else if (score === bestScore) {
+                        bestMoves.push(move);
+                    }
+                }
             }
         }}
     }}
-    if (legalMoves.length > 0) {
-        const move = legalMoves[Math.floor(Math.random() * legalMoves.length)];
-        if (move.type === 'move') { movePiece(move.from, move.to.r, move.to.c); } else { dropPiece(move.piece, move.to.r, move.to.c); }
-    } else {
-        infoAreaElement.innerText = "後手の負けです！"; isGameOver = true;
+
+    if (bestMoves.length > 0) {
+        const bestMove = bestMoves[Math.floor(Math.random() * bestMoves.length)];
+        if (bestMove.type === 'move') {
+            movePiece(bestMove.from, bestMove.to.r, bestMove.to.c, bestMove.promote);
+        } else {
+            dropPiece(bestMove.piece, bestMove.to.r, bestMove.to.c);
+        }
+    } else if (!legalMovesAvailable) {
+        infoAreaElement.innerText = "後手の負けです！"; 
+        isGameOver = true;
     }
 }
 document.getElementById('vs-human-btn').addEventListener('click', () => { gameMode = 'human'; startGame(); });
